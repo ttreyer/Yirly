@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Yirly: Your year at a glance</title>
+    <style>
+      /* START RESET */
+      *, *::before, *::after { box-sizing: border-box; }
+      * { margin: 0; }
+      html, body { width: 100%; }
+      body {
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+      img, picture, video, canvas, svg {
+        display: block;
+        max-width: 100%;
+      }
+      input, button, textarea, select { font: inherit; }
+      p, h1, h2, h3, h4, h5, h6 { overflow-wrap: break-word; }
+      /* STOP RESET */
+
+      body {
+        display: flex;
+        gap: 1em;
+      }
+
+      .year {
+        display: grid;
+        gap: 1em;
+        flex-shrink: 0;
+      }
+
+      .year > .title {
+        grid-column: 1 / -1;
+        justify-self: center;
+        align-self: center;
+        text-decoration: underline dotted .17em;
+      }
+
+      .month {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        grid-template-rows: repeat(8, 1fr);
+        justify-items: end;
+        align-items: center;
+      }
+
+      .month > .title {
+        grid-column: 1 / 8;
+        font-weight: 700;
+        font-stretch: condensed;
+        font-family: "Avenir Next Condensed";
+      }
+
+      .month .dow {
+        grid-row: 2 / 3;
+        font-style: italic;
+        font-weight: lighter;
+        font-stretch: condensed;
+      }
+
+      .month > div {
+        padding-right: 0.5rem;
+      }
+
+      .weekend {
+        text-decoration: underline;
+        font-weight: 600; /* semibold */
+      }
+
+      .line {
+        border-bottom: solid 1px black;
+        grid-column: 1 / 8;
+        justify-self: stretch;
+        align-self: center;
+        margin-top: 0.825em;
+      }
+
+      #controls {
+        position: fixed;
+        top: 1em;
+        right: 1em;
+
+        display: flex;
+        flex-direction: column;
+        background-color: #badada;
+        padding: 1em;
+      }
+
+      #controls>*:not(:last-child) { padding-bottom: 1em; }
+      #controls>* { font-weight: bold; }
+      #controls>* * { font-weight: normal; }
+
+      @media print {
+        #controls { display: none; }
+
+        body { flex-direction: column !important; }
+
+        .year { padding: 1em; }
+      }
+    </style>
+  </head>
+  <body>
+    <form id="controls">
+      <label>Year
+        <input type=number name=year value=2022 size=5>
+      </label>
+      <label>Title
+        <input type=text name=title value=Your>
+      </label>
+      <label>Font
+        <select name=font>
+          <option value=sans selected>Sans</option>
+          <option value=typewriter>Typewriter</option>
+        </select>
+      </label>
+      <label>Start week on Monday?
+        <input type=checkbox name=startWeekMonday checked>
+      </label>
+      <label>Show notes?
+        <input type=checkbox name=showNotes checked>
+      </label>
+      <label>Paper size
+        <select name=paperSize>
+          <option value=screen>Screen</option>
+          <option value=a4 selected>A4</option>
+          <option value=usLetter>US Letter</option>
+        </select>
+      </label>
+      <p>Orientation<br>
+        <label><input type=radio name=orientation value=portrait checked> Portrait</label>
+        <label><input type=radio name=orientation value=landscape> Landscape</label>
+      </p>
+      <label>Columns
+        <input type=number name=columns value=3 size=3>
+      </label>
+      <label>Rows
+        <input type=number name=rows value=4 size=3>
+      </label>
+      <p>Direction<br>
+        <label><input type=radio name=direction value=vertical> Vertical</label>
+        <label><input type=radio name=direction value=horizontal checked> Horizontal</label>
+      </p>
+    </form>
+
+    <script>
+      const paperSizes = {
+        screen: ['100%', '100%'],
+        a4: ['210mm', '297mm'],
+        usLetter: ['8.5in', '11in'],
+      };
+
+      const defaultOptions = {
+        holidays: [
+          new Date(2022, 0, 1),    // Saturday 1, January 2022	New Year's Day
+          new Date(2022, 0, 3),    // Monday 3, January 2022	New Year's Day Holiday
+          new Date(2022, 2, 18),   // Friday, March 18, 2022
+          new Date(2022, 3, 15),   // Friday 15, April 2022	Good Friday
+          new Date(2022, 3, 18),   // Monday 18, April 2022	Easter Monday
+          new Date(2022, 3, 29),   // Friday, April 29, 2022
+          new Date(2022, 4, 2),    // Monday 2, May 2022	May Day Bank Holiday
+          new Date(2022, 4, 27),   // Friday, May 27, 2022
+          new Date(2022, 5, 2),    // Thursday 2, June 2022	Spring Bank Holiday
+          new Date(2022, 5, 3),    // Friday 3, June 2022	Queen's Platinum Jubilee Bank Holiday
+          new Date(2022, 6, 1),    // Friday, July 1, 2022
+          new Date(2022, 7, 29),   // Monday 29, August 2022	Summer Bank Holiday
+          new Date(2022, 8, 2),    // Friday, September 2, 2022
+          new Date(2022, 11, 25),  // Sunday 25, December 2022	Christmas Day
+          new Date(2022, 11, 26),  // Monday 26, December 2022	Boxing Day
+          new Date(2022, 11, 27),  // Tuesday 27, December 2022	Christmas Day Holiday
+        ]
+      };
+
+      const monthFormatter = Intl.DateTimeFormat('default', {month: "long"});
+      const isHoliday = (holidays, date) => holidays.find(h => h.getTime() == date.getTime());
+
+      const yearDivs = document.getElementsByClassName("year");
+
+      const controls = Array.from(document.querySelectorAll("#controls input, #controls select"));
+
+      const style = new CSSStyleSheet();
+      document.adoptedStyleSheets = [style];
+
+      function getValue(input) {
+        switch (input.type) {
+          case "checkbox":
+            return input.checked;
+          case "radio":
+            return input.checked ? input.value : undefined;
+          case "number":
+            return parseInt(input.value);
+          default:
+            return input.value;
+        }
+      }
+
+      function collectOptions() {
+        const collectedOptions = controls
+          .reduce((acc, input) => ({ ...acc, [input.name]: acc[input.name] || getValue(input) }), {});
+        return {
+          ...defaultOptions,
+          ...collectedOptions,
+        };
+      }
+
+      function clear() {
+        style.replaceSync("");
+        for (let yearDiv of document.querySelectorAll('.year'))
+          document.body.removeChild(yearDiv);
+      }
+
+      function newPage(opts) {
+        const yearDiv = document.createElement('div');
+        yearDiv.classList.add('year');
+
+        const yearTitle = document.createElement('h1');
+        yearTitle.classList.add('title');
+        yearTitle.textContent = opts.title + " " + opts.year;
+        yearDiv.appendChild(yearTitle);
+
+        return yearDiv;
+      }
+
+      function buildYirly(opts) {
+        console.debug(opts);
+
+        const year = new Date(opts.year, 0).getFullYear();
+
+        let [width, height] = paperSizes[opts.paperSize];
+        if (opts.orientation === "landscape")
+          [width, height] = [height, width];
+
+        const direction = opts.direction === "vertical" ? "column" : "row";
+        const font = opts.font === "sans" ? "Avenir Next" : "American Typewriter";
+        style.insertRule(`
+          body {
+            flex-direction: ${direction};
+            font-family: "${font}";
+          }`);
+
+        style.insertRule(`
+          .year {
+            grid-template-columns: repeat(${opts.columns}, 1fr);
+            grid-template-rows: auto repeat(${opts.rows}, 1fr);
+            width: ${width};
+            height: ${height};
+          }`);
+
+        const totalCellCount = 12 * (opts.showNotes ? 2 : 1);
+        const pageCapacity = opts.rows * opts.columns;
+        const pageCount = Math.ceil(totalCellCount / pageCapacity);
+
+        const pageDivs = [];
+        for (let pageIdx = 0; pageIdx < pageCount; pageIdx++)
+          pageDivs.push(newPage(opts));
+
+        let week = 1;
+        let cellIdx = 0;
+
+        for (let m = 0; m < 12; m++) {
+          let month = new Date(year, m, 1);
+          const startWeek = week;
+
+          const monthDiv = document.createElement('div');
+          monthDiv.classList.add('month');
+
+          const monthTitle = document.createElement('div');
+          monthTitle.classList.add('title');
+          monthTitle.textContent = monthFormatter.format(month);
+          monthDiv.appendChild(monthTitle);
+
+          const dows = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+          if (opts.startWeekMonday)
+            dows.push(dows.shift());
+
+          for (const dow of dows) {
+            const dowDiv = document.createElement('div');
+            dowDiv.classList.add('dow');
+            dowDiv.textContent = dow;
+            monthDiv.appendChild(dowDiv);
+          }
+
+          const dowBias = opts.startWeekMonday ? 6 : 0;
+
+          let day = month;
+          while (day.getMonth() == m) {
+            const dow = (day.getDay() + dowBias) % 7;
+
+            const dayDiv = document.createElement('div')
+            dayDiv.classList.add('day');
+            // Highlight weekends and holidays
+            if (day.getDay() === 0 || day.getDay() >= 6) dayDiv.classList.add('weekend');
+            if (isHoliday(opts.holidays, day)) dayDiv.classList.add('weekend');
+            // Position the day in the month
+            dayDiv.style.gridColumnStart = dow + 1;
+            dayDiv.textContent = day.getDate();
+
+            monthDiv.appendChild(dayDiv);
+
+            if (dow === 6) week++;
+            day.setDate(day.getDate() + 1);
+          }
+
+          let pageIdx = opts.direction === "vertical"
+            ? Math.floor(cellIdx / pageCapacity)
+            : Math.floor((cellIdx % (pageCount * opts.columns)) / opts.columns);
+
+          pageDivs[pageIdx].appendChild(monthDiv)
+          cellIdx++;
+
+          if (!opts.showNotes) continue;
+
+          const noteDiv = document.createElement('div');
+          noteDiv.classList.add('month');
+
+          for (let i = 0; i < 6; i++) {
+            const noteLineDiv = document.createElement('div');
+            noteLineDiv.classList.add('line');
+            noteLineDiv.style.gridRowStart = i + 3;
+            noteDiv.appendChild(noteLineDiv);
+          }
+
+          pageIdx = opts.direction === "vertical"
+            ? Math.floor(cellIdx / pageCapacity)
+            : Math.floor((cellIdx % (pageCount * opts.columns)) / opts.columns);
+
+          pageDivs[pageIdx].appendChild(noteDiv)
+          cellIdx++;
+        }
+
+        for (const pageDiv of pageDivs)
+          document.body.appendChild(pageDiv);
+      }
+
+      function updateYirly() {
+        clear();
+        buildYirly(collectOptions());
+      }
+
+      for (const input of controls)
+        input.addEventListener('change', updateYirly);
+
+      updateYirly(defaultOptions)
+    </script>
+  </body>
+</html>
